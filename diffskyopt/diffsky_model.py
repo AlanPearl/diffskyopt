@@ -2,30 +2,25 @@ import os
 import pathlib
 import warnings
 
-from mpi4py import MPI
-import numpy as np
 import jax
 import jax.numpy as jnp
-
-from dsps import load_ssp_templates
-from dsps.data_loaders.defaults import TransmissionCurve
-from dsps.data_loaders import load_transmission_curve
+import numpy as np
+from diffmah.diffmah_kernels import _log_mah_kern
+from diffmah.diffmahpop_kernels.bimod_censat_params import DEFAULT_DIFFMAHPOP_PARAMS
+from diffmah.diffmahpop_kernels.mc_bimod_cens import mc_cenpop
 from diffsky.experimental import lc_phot_kern
 from diffsky.experimental.lc_phot_kern import mclh
 from diffsky.experimental.mc_lightcone_halos import get_nhalo_weighted_lc_grid
-from diffsky.mass_functions.fitting_utils.calibrations \
-    import hacc_core_shmf_params
-from diffmah.diffmahpop_kernels.mc_bimod_cens import mc_cenpop
-from diffmah.diffmah_kernels import _log_mah_kern
 from diffsky.mass_functions import mc_hosts
-from diffsky.mass_functions.hmf_calibrations import \
-    smdpl_hmf_subs, smdpl_hmf
+from diffsky.mass_functions.fitting_utils.calibrations import hacc_core_shmf_params
+from diffsky.mass_functions.hmf_calibrations import smdpl_hmf, smdpl_hmf_subs
 from diffsky.ssp_err_model import ssp_err_model
-from diffmah.diffmahpop_kernels.bimod_censat_params import \
-    DEFAULT_DIFFMAHPOP_PARAMS
-from dsps.cosmology.defaults import DEFAULT_COSMOLOGY
+from dsps import load_ssp_templates
 from dsps.cosmology import flat_wcdm
-
+from dsps.cosmology.defaults import DEFAULT_COSMOLOGY
+from dsps.data_loaders import load_transmission_curve
+from dsps.data_loaders.defaults import TransmissionCurve
+from mpi4py import MPI
 from scipy.stats import qmc
 
 if os.environ.get("DIFFSKYOPT_EXPAND_ZRANGE_SSP_ERR"):
@@ -151,13 +146,13 @@ def generate_lc_data_kern(
 
 def generate_lc_data(z_min, z_max, lgmp_min, sky_area_degsq,
                      ran_key=None, n_z_phot_table=15, logmp_cutoff=0.0,
-                     hmf_calibration=None):
+                     hmf_calibration=None, drn_filters=FILTERS_DIR, drn_dsps=DATA_DIR):
     if ran_key is None:
         ran_key = jax.random.key(0)
 
-    ssp_data = load_ssp_templates(DATA_DIR / SSP_FILE)
+    ssp_data = load_ssp_templates(drn_dsps / SSP_FILE)
 
-    ffiles = [FILTERS_DIR / fn for fn in FILTER_FILES]
+    ffiles = [drn_filters / fn for fn in FILTER_FILES]
     tcurves = [load_transmission_curve(fn) if str(fn).endswith(".h5") else
                TransmissionCurve(*np.loadtxt(fn).T) for fn in ffiles]
 
@@ -303,7 +298,8 @@ def generate_weighted_sobol_lc_data(num_halos, z_min, z_max,
                                     lgmp_min, lgmp_max,
                                     sky_area_degsq, ran_key=None,
                                     n_z_phot_table=15, logmp_cutoff=0.0,
-                                    hmf_calibration=None, comm=None):
+                                    hmf_calibration=None, comm=None,
+                                    drn_filters=FILTERS_DIR, drn_dsps=DATA_DIR):
     if comm is None:
         comm = MPI.COMM_WORLD
     if ran_key is None:
@@ -334,9 +330,9 @@ def generate_weighted_sobol_lc_data(num_halos, z_min, z_max,
         z_obs, logmp_obs_mf = qmc.scale(
             sample, (z_min, lgmp_min), (z_max, lgmp_max)).T
 
-    ssp_data = load_ssp_templates(DATA_DIR / SSP_FILE)
+    ssp_data = load_ssp_templates(os.path.join(drn_dsps, SSP_FILE))
 
-    ffiles = [FILTERS_DIR / fn for fn in FILTER_FILES]
+    ffiles = [os.path.join(drn_filters, fn) for fn in FILTER_FILES]
     tcurves = [load_transmission_curve(fn) if str(fn).endswith(".h5") else
                TransmissionCurve(*np.loadtxt(fn).T) for fn in ffiles]
 
